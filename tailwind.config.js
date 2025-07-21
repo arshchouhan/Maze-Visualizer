@@ -6,6 +6,13 @@ module.exports = {
   ],
   theme: {
     extend: {
+      keyframes: {
+        bubble: {
+          '0%': { transform: 'scale(0.95)', opacity: '0.7' },
+          '50%': { transform: 'scale(1.05)', opacity: '0.9' },
+          '100%': { transform: 'scale(1)', opacity: '1' }
+        }
+      },
       colors: {
         'matrix-bg': '#0f0f23',
         'matrix-cell': '#1e1e3f',
@@ -18,6 +25,8 @@ module.exports = {
       animation: {
         'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'bounce-gentle': 'bounce 1s infinite',
+        'bubble': 'bubble 1.2s cubic-bezier(0.4, 0, 0.6, 1)',
+        'pulse': 'pulse 2s infinite',
       },
       boxShadow: {
         'glow-green': '0 0 20px rgba(16, 185, 129, 0.5)',

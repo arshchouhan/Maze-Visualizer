@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayIcon } from '@heroicons/react/24/solid';
+import { PlayIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
 
 const Matrix = ({
   gridSize = 20, // Default value if not provided
@@ -10,7 +10,10 @@ const Matrix = ({
   onMouseDown,
   onMouseEnter,
   onMouseUp,
-  dragMode
+  dragMode,
+  visitedCells = new Set(),
+  pathCells = new Set(),
+  isVisualizing = false
 }) => {
   // Calculate cell type (empty, wall, start, or target)
   const getCellType = (row, col) => {
@@ -23,12 +26,24 @@ const Matrix = ({
   // Get appropriate CSS class based on cell type
   const getCellClass = (row, col) => {
     const type = getCellType(row, col);
+    const cellKey = `${row}-${col}`;
     let className = 'relative w-full h-full';
 
-    if (type === 'start') className += ' bg-emerald-500 shadow-emerald-500/50 shadow-inner';
-    else if (type === 'target') className += ' bg-amber-500 shadow-amber-500/50 shadow-inner';
-    else if (type === 'wall') className += ' bg-gray-600 shadow-gray-600/50 shadow-inner';
-    else {
+    if (type === 'start') {
+      className += ' bg-emerald-500 shadow-emerald-500/50 shadow-inner';
+    } else if (type === 'target') {
+      className += ' bg-amber-500 shadow-amber-500/50 shadow-inner';
+    } else if (type === 'wall') {
+      className += ' bg-gray-600 shadow-gray-600/50 shadow-inner';
+    } else if (pathCells.has(cellKey)) {
+      // Path cells get a bright blue color with pulsing animation
+      className += ' bg-blue-500 shadow-blue-500/50 shadow-inner animate-pulse';
+    } else if (visitedCells.has(cellKey)) {
+      // Visited cells get a teal color with bubble animation
+      className += ' bg-teal-600 shadow-teal-600/50 shadow-inner';
+      // Add specific animation class for bubble effect
+      className += ' animate-bubble';
+    } else {
       // Alternating colors for empty cells (chessboard pattern)
       const isEven = (row + col) % 2 === 0;
       className += isEven ? ' bg-[#2C3648]' : ' bg-[#1F2937]';

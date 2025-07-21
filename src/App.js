@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { breadthFirstSearch } from './algorithms/breadthFirstSearch';
 import { 
   PlayIcon, 
   FlagIcon, 
@@ -27,6 +28,16 @@ function App() {
   const [dragMode, setDragMode] = useState(null); // 'start', 'target', or null
   const [algorithm, setAlgorithm] = useState('breadth-first');
   const [mazeGenAlgorithm, setMazeGenAlgorithm] = useState('custom');
+
+  // Algorithm visualization states
+  const [isVisualizing, setIsVisualizing] = useState(false);
+  const [visitedCells, setVisitedCells] = useState(new Set());
+  const [pathCells, setPathCells] = useState(new Set());
+  const [algorithmStats, setAlgorithmStats] = useState({
+    visitedCount: 0,
+    pathLength: 0,
+    pathFound: false
+  });
 
   const handleCellClick = useCallback((row, col) => {
     if (dragMode === 'start') {
@@ -133,6 +144,63 @@ function App() {
   const clearWalls = () => {
     setWalls(new Set());
   };
+  
+  // Reset all visualization states
+  const resetVisualization = () => {
+    setVisitedCells(new Set());
+    setPathCells(new Set());
+    setAlgorithmStats({
+      visitedCount: 0,
+      pathLength: 0,
+      pathFound: false
+    });
+  };
+  
+  // Run the selected pathfinding algorithm
+  const runAlgorithm = async () => {
+    // Reset previous visualization
+    resetVisualization();
+    setIsVisualizing(true);
+    
+    // Callback to update visited cells with animation
+    const updateVisited = (row, col) => {
+      const cellKey = `${row}-${col}`;
+      setVisitedCells(prev => {
+        const newVisited = new Set(prev);
+        newVisited.add(cellKey);
+        return newVisited;
+      });
+    };
+    
+    // Callback to update path cells with animation
+    const updatePath = (row, col) => {
+      const cellKey = `${row}-${col}`;
+      setPathCells(prev => {
+        const newPath = new Set(prev);
+        newPath.add(cellKey);
+        return newPath;
+      });
+    };
+    
+    // Execute the BFS algorithm with visualization callbacks
+    const results = await breadthFirstSearch(
+      GRID_SIZE,
+      startPos,
+      targetPos,
+      walls,
+      updateVisited,
+      updatePath
+    );
+    
+    // Update stats with results
+    setAlgorithmStats({
+      visitedCount: results.visitedCount,
+      pathLength: results.pathLength,
+      pathFound: results.pathFound
+    });
+    
+    setIsVisualizing(false);
+  };
 
   const resetGrid = () => {
     setWalls(new Set());
@@ -164,7 +232,7 @@ function App() {
           <div className="lg:col-span-1">
             <div className="space-y-6">
               {/* Algorithm Settings Panel */}
-              <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
+               <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
                 <div className="bg-[#374151] px-4 py-3 flex items-center">
                   <CogIcon className="w-5 h-5 text-purple-500 mr-2" />
                   <h2 className="text-white font-medium">Algorithm Settings</h2>
@@ -176,6 +244,7 @@ function App() {
                       value={algorithm}
                       onChange={(e) => setAlgorithm(e.target.value)}
                       className="w-full bg-[#374151] text-white py-2 px-3 rounded-md cursor-pointer border border-gray-600"
+                      disabled={isVisualizing}
                     >
                       <option value="breadth-first">Breadth-First</option>
                       <option value="depth-first">Depth-First</option>
@@ -190,6 +259,7 @@ function App() {
                       value={mazeGenAlgorithm}
                       onChange={(e) => setMazeGenAlgorithm(e.target.value)}
                       className="w-full bg-[#374151] text-white py-2 px-3 rounded-md cursor-pointer border border-gray-600"
+                      disabled={isVisualizing}
                     >
                       <option value="custom">Custom</option>
                       <option value="random">Random</option>
@@ -198,13 +268,17 @@ function App() {
                     </select>
                   </div>
                   
-                  <button
-                    onClick={() => {}} // Placeholder for future functionality
-                    className="w-full mt-2 py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all flex items-center justify-center"
-                  >
-                    <PlayIcon className="w-4 h-4 mr-2" />
-                    Start Algorithm
-                  </button>
+                  <div>
+                    <button 
+                      className={`w-full py-3 px-4 ${isVisualizing ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-md font-medium transition-all flex items-center justify-center`}
+                      onClick={runAlgorithm}
+                      disabled={isVisualizing}
+                    >
+                      <PlayIcon className="h-5 w-5 mr-2" />
+                      {isVisualizing ? 'Running...' : 'Run Algorithm'}
+                    </button>
+                  </div>
+                {/* Removed duplicate button since we already have a Run Algorithm button */}
                 </div>
               </section>
 
@@ -286,7 +360,7 @@ function App() {
               </div>
               <div className="p-2 flex flex-grow" style={{ height: 'calc(100vh - 200px)', minHeight: '600px' }}>
                 <div className="w-full h-full">
-                  <Matrix
+                  <Matrix 
                     gridSize={GRID_SIZE}
                     startPos={startPos}
                     targetPos={targetPos}
@@ -296,6 +370,9 @@ function App() {
                     onMouseEnter={handleMouseEnter}
                     onMouseUp={handleMouseUp}
                     dragMode={dragMode}
+                    visitedCells={visitedCells}
+                    pathCells={pathCells}
+                    isVisualizing={isVisualizing}
                   />
                 </div>
               </div>
@@ -306,7 +383,7 @@ function App() {
               {/* Statistics Panel */}
               <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
                 <div className="bg-[#374151] px-4 py-3 flex items-center">
-                  <ChartBarIcon className="w-5 h-5 text-blue-500 mr-2" />
+                  <ChartBarIcon className="w-5 h-5 text-sky-500 mr-2" />
                   <h2 className="text-white font-medium">Statistics</h2>
                 </div>
                 <div className="p-4">
@@ -314,10 +391,6 @@ function App() {
                     <div className="bg-[#2C3648] rounded-md p-3">
                       <p className="text-xs text-gray-400">Grid Size</p>
                       <p className="text-base text-white font-mono">{GRID_SIZE} × {GRID_SIZE}</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-xs text-gray-400">Total Cells</p>
-                      <p className="text-base text-white font-mono">{GRID_SIZE * GRID_SIZE}</p>
                     </div>
                     <div className="bg-[#2C3648] rounded-md p-3">
                       <p className="text-xs text-gray-400">Walls</p>
@@ -335,6 +408,29 @@ function App() {
                       <p className="text-xs text-gray-400">Target Position</p>
                       <p className="text-base text-amber-500 font-mono">({targetPos.row}, {targetPos.col})</p>
                     </div>
+                    
+                    {/* Algorithm Results Section */}
+                    {visitedCells.size > 0 && (
+                      <>
+                        <div className="col-span-2 mt-2 pt-2 border-t border-gray-700">
+                          <h3 className="text-white font-medium mb-2">Search Results</h3>
+                        </div>
+                        <div className="bg-[#2C3648] rounded-md p-3">
+                          <p className="text-xs text-gray-400">Cells Visited</p>
+                          <p className="text-base text-teal-500 font-mono">{algorithmStats.visitedCount}</p>
+                        </div>
+                        <div className="bg-[#2C3648] rounded-md p-3">
+                          <p className="text-xs text-gray-400">Path Length</p>
+                          <p className="text-base text-blue-500 font-mono">{algorithmStats.pathLength || 'N/A'}</p>
+                        </div>
+                        <div className="bg-[#2C3648] rounded-md p-3 col-span-2">
+                          <p className="text-xs text-gray-400">Result</p>
+                          <p className={`text-base font-mono ${algorithmStats.pathFound ? 'text-green-500' : 'text-red-500'}`}>
+                            {algorithmStats.pathFound ? 'Path Found! ✓' : 'No Path Found! ✗'}
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </section>
@@ -353,11 +449,11 @@ function App() {
                     </div>
                     <div className="bg-[#2C3648] rounded-md p-3">
                       <p className="text-white text-sm mb-1 font-medium">Moving Start/Target</p>
-                      <p className="text-gray-300 text-xs">Use the buttons in the Node Controls panel to move start and target positions</p>
+                      <p className="text-gray-300 text-xs">Click and drag the green start node or amber target node to reposition them</p>
                     </div>
                     <div className="bg-[#2C3648] rounded-md p-3">
                       <p className="text-white text-sm mb-1 font-medium">Running Algorithms</p>
-                      <p className="text-gray-300 text-xs">Select an algorithm and click 'Start Algorithm' to visualize pathfinding</p>
+                      <p className="text-gray-300 text-xs">Select an algorithm and click 'Run Algorithm' to visualize pathfinding with animated bubbles</p>
                     </div>
                   </div>
                 </div>
