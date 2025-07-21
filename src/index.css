@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+}
+
+@layer components {
+  .matrix-cell {
+    @apply w-8 h-8 border border-gray-700 bg-matrix-cell hover:bg-matrix-hover transition-all duration-200 cursor-pointer relative;
+  }
+  
+  .matrix-cell.start {
+    @apply bg-start-node shadow-glow-green animate-pulse-slow;
+  }
+  
+  .matrix-cell.target {
+    @apply bg-target-node shadow-glow-amber animate-pulse-slow;
+  }
+  
+  .matrix-cell.wall {
+    @apply bg-wall;
+  }
+  
+  .matrix-cell.path {
+    @apply bg-path shadow-glow-blue;
+  }
+}
