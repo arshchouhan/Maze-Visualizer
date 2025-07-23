@@ -2,7 +2,7 @@ import React from 'react';
 import { PlayIcon, CheckCircleIcon } from '@heroicons/react/24/solid';
 
 const Matrix = ({
-  gridSize = 20, // Default value if not provided
+  gridSize = 20,
   startPos,
   targetPos,
   walls,
@@ -13,6 +13,7 @@ const Matrix = ({
   dragMode,
   visitedCells = new Set(),
   pathCells = new Set(),
+  mazeGenerationCells = new Set(),
   isVisualizing = false
 }) => {
   // Calculate cell type (empty, wall, start, or target)
@@ -23,52 +24,89 @@ const Matrix = ({
     return 'empty';
   };
 
-  // Get appropriate CSS class based on cell type
-  const getCellClass = (row, col) => {
+  // Check if we're in maze generation mode or if generation just completed
+  const isGenerating = mazeGenerationCells.has('generation_complete') ? false : mazeGenerationCells.size > 0;
+  const generationComplete = mazeGenerationCells.has('generation_complete');
+  
+  // Get appropriate styles based on cell type
+  const getCellStyle = (row, col) => {
     const type = getCellType(row, col);
     const cellKey = `${row}-${col}`;
-    let className = 'relative w-full h-full';
-
-    if (type === 'start') {
-      className += ' bg-emerald-500 shadow-emerald-500/50 shadow-inner';
+    
+    // During maze generation, show the generating path in solid black
+    if (isGenerating && mazeGenerationCells.has(cellKey)) {
+      return {
+        backgroundColor: '#000000',
+        width: '100%',
+        height: '100%',
+        aspectRatio: '1 / 1',
+      };
+    }
+    
+    // After generation, paths are gray, everything else is black
+    let backgroundColor = '#e2e8f0'; // Default light gray (for paths during generation)
+    let animation = '';
+    
+    // Handle cell coloring based on type and state
+    if (pathCells.has(cellKey)) {
+      // Path cells (blue with pulse animation)
+      backgroundColor = '#3b82f6';
+      animation = 'pulse 1s infinite';
+    } else if (type === 'start') {
+      // Start cell (green)
+      backgroundColor = '#10b981';
     } else if (type === 'target') {
-      className += ' bg-amber-500 shadow-amber-500/50 shadow-inner';
+      // Target cell (amber)
+      backgroundColor = '#f59e0b';
     } else if (type === 'wall') {
-      className += ' bg-gray-600 shadow-gray-600/50 shadow-inner';
-    } else if (pathCells.has(cellKey)) {
-      // Path cells get a bright blue color with pulsing animation
-      className += ' bg-blue-500 shadow-blue-500/50 shadow-inner animate-pulse';
+      // Wall cells (dark gray during generation, black after completion)
+      backgroundColor = generationComplete ? '#000000' : '#4b5563';
     } else if (visitedCells.has(cellKey)) {
-      // Visited cells get a teal color with bubble animation
-      className += ' bg-teal-600 shadow-teal-600/50 shadow-inner';
-      // Add specific animation class for bubble effect
-      className += ' animate-bubble';
+      // Visited cells (teal)
+      backgroundColor = '#0d9488';
+    } else if (pathCells.size > 0) {
+      // After path is generated, use single color matching control panel
+      backgroundColor = '#2d3748';
     } else {
-      // Alternating colors for empty cells (chessboard pattern)
+      // Chessboard pattern matching control panel colors
       const isEven = (row + col) % 2 === 0;
-      className += isEven ? ' bg-[#2C3648]' : ' bg-[#1F2937]';
+      backgroundColor = isEven ? '#2d3748' : '#374151';
     }
 
-    return className;
+    return {
+      backgroundColor,
+      animation,
+      width: '100%',
+      height: '100%',
+      aspectRatio: '1 / 1',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      transition: 'all 0.1s ease',
+      cursor: getCellType(row, col) === 'start' || getCellType(row, col) === 'target' 
+        ? 'grab' 
+        : dragMode === 'start' || dragMode === 'target' ? 'grabbing' 
+        : 'pointer',
+      transform: getCellType(row, col) === 'start' || getCellType(row, col) === 'target' 
+        ? 'scale(1.05)' 
+        : 'scale(1)'
+    };
   };
 
-  // Render the content of a cell (icons for start/target nodes)
+  // Render cell content (icons for start and target)
   const renderCellContent = (row, col) => {
     const type = getCellType(row, col);
+    
     if (type === 'start') {
       return (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <PlayIcon className="w-4 h-4 text-white drop-shadow-lg" />
-        </div>
+        <PlayIcon style={{ width: '60%', height: '60%', color: 'white' }} />
       );
-    }
-    if (type === 'target') {
+    } else if (type === 'target') {
       return (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="h-2 w-2 bg-white rounded-full"></div>
-        </div>
+        <CheckCircleIcon style={{ width: '60%', height: '60%', color: 'white' }} />
       );
     }
+    
     return null;
   };
 
@@ -81,22 +119,12 @@ const Matrix = ({
         cells.push(
           <div
             key={`${row}-${col}`}
-            className={`${getCellClass(row, col)} ${dragMode && getCellType(row, col) === 'empty' ? 'hover:bg-blue-500/20' : ''}`}
             onClick={() => onCellClick(row, col)}
             onMouseDown={() => onMouseDown(row, col)}
             onMouseEnter={() => onMouseEnter(row, col)}
             onMouseUp={onMouseUp}
             onDragStart={(e) => e.preventDefault()}
-            style={{
-              cursor: getCellType(row, col) === 'start' || getCellType(row, col) === 'target' 
-                ? 'grab' 
-                : dragMode === 'start' || dragMode === 'target' ? 'grabbing' 
-                : 'pointer',
-              transition: 'all 0.1s ease',
-              transform: getCellType(row, col) === 'start' || getCellType(row, col) === 'target' 
-                ? 'scale(1.05)' 
-                : 'scale(1)'
-            }}
+            style={getCellStyle(row, col)}
           >
             {renderCellContent(row, col)}
           </div>
@@ -107,19 +135,18 @@ const Matrix = ({
     return cells;
   };
 
-  // Render the matrix
+  // Render the matrix - padding is now handled by App.js grid container
   return (
-    <div 
-      className="grid gap-[1px] bg-gray-700 p-[1px] rounded-md overflow-hidden shadow-lg w-full h-full"
-      style={{ 
-        gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))`,
-        gridTemplateRows: `repeat(${gridSize}, minmax(0, 1fr))`,
-        aspectRatio: '1/1',
-        width: '100%',
-        height: '100%',
-        maxHeight: '100%'
-      }}
-    >
+    <div style={{
+      width: '100%',
+      height: '100%',
+      display: 'grid',
+      gridTemplateColumns: `repeat(${gridSize}, 1fr)`,
+      gridTemplateRows: `repeat(${gridSize}, 1fr)`,
+      gap: '1px',
+      backgroundColor: '#374151',
+      border: '1px solid #374151'
+    }}>
       {renderCells()}
     </div>
   );

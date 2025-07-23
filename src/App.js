@@ -1,467 +1,397 @@
 import React, { useState, useCallback } from 'react';
 import { breadthFirstSearch } from './algorithms/breadthFirstSearch';
-import { 
-  PlayIcon, 
-  FlagIcon, 
-  TrashIcon, 
-  ArrowPathIcon, 
-  PuzzlePieceIcon,
-  CursorArrowRaysIcon,
-  CubeIcon,
-  ChartBarIcon,
-  InformationCircleIcon,
-  CogIcon,
-  HandRaisedIcon,
-  StopIcon
-} from '@heroicons/react/24/solid';
+import { generateMazeWithPrims } from './algorithms/primsAlgorithm';
+import { generateMazeWithRecursiveDivision } from './algorithms/recursiveDivision';
 import Matrix from './components/Matrix';
+import StatisticsModal from './components/StatisticsModal';
 
-const GRID_SIZE = 20;
+const GRID_SIZE = 45;
 
 function App() {
   // State management
-  const [startPos, setStartPos] = useState({ row: 2, col: 2 });
-  const [targetPos, setTargetPos] = useState({ row: 17, col: 17 });
+  const [startPos, setStartPos] = useState({ row: 1, col: 1 });
+  const [targetPos, setTargetPos] = useState({ row: 15, col: 25 });
   const [walls, setWalls] = useState(new Set());
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [isDragging, setIsDragging] = useState(false); // Track if we're currently dragging a node
-  const [dragMode, setDragMode] = useState(null); // 'start', 'target', or null
-  const [algorithm, setAlgorithm] = useState('breadth-first');
-  const [mazeGenAlgorithm, setMazeGenAlgorithm] = useState('custom');
-
-  // Algorithm visualization states
-  const [isVisualizing, setIsVisualizing] = useState(false);
   const [visitedCells, setVisitedCells] = useState(new Set());
   const [pathCells, setPathCells] = useState(new Set());
-  const [algorithmStats, setAlgorithmStats] = useState({
-    visitedCount: 0,
-    pathLength: 0,
-    pathFound: false
-  });
+  const [mazeGenerationCells, setMazeGenerationCells] = useState(new Set());
+  const [isVisualizing, setIsVisualizing] = useState(false);
+  const [isGeneratingMaze, setIsGeneratingMaze] = useState(false);
+  const [algorithm, setAlgorithm] = useState('breadth-first');
+  const [mazeGenAlgorithm, setMazeGenAlgorithm] = useState('prims');
+  const [dragMode, setDragMode] = useState(null);
+  const [showStatistics, setShowStatistics] = useState(false);
+  const [algorithmStats, setAlgorithmStats] = useState(null);
+  const [mazeGenerationStats, setMazeGenerationStats] = useState(null);
 
+  // Cell click handler
   const handleCellClick = useCallback((row, col) => {
-    if (dragMode === 'start') {
-      setStartPos({ row, col });
-      setDragMode(null);
-    } else if (dragMode === 'target') {
-      setTargetPos({ row, col });
-      setDragMode(null);
-    } else if (row === startPos.row && col === startPos.col) {
-      // Clicked on start node
-      return;
-    } else if (row === targetPos.row && col === targetPos.col) {
-      // Clicked on target node
-      return;
-    } else {
-      // Toggle wall
-      const key = `${row}-${col}`;
-      setWalls(prev => {
-        const newWalls = new Set(prev);
-        if (newWalls.has(key)) {
-          newWalls.delete(key);
-        } else {
-          newWalls.add(key);
-        }
-        return newWalls;
-      });
-    }
-  }, [dragMode, startPos, targetPos]);
+    if (isVisualizing || isGeneratingMaze) return;
 
+    const cellKey = `${row}-${col}`;
+    
+    // Don't allow clicking on start or target positions
+    if ((row === startPos.row && col === startPos.col) || 
+        (row === targetPos.row && col === targetPos.col)) {
+      return;
+    }
+
+    // Toggle wall
+    setWalls(prev => {
+      const newWalls = new Set(prev);
+      if (newWalls.has(cellKey)) {
+        newWalls.delete(cellKey);
+      } else {
+        newWalls.add(cellKey);
+      }
+      return newWalls;
+    });
+  }, [isVisualizing, isGeneratingMaze, startPos, targetPos]);
+
+  // Mouse handlers for dragging
   const handleMouseDown = useCallback((row, col) => {
-    // If we click on start node, initiate dragging for start node
-    if (row === startPos.row && col === startPos.col) {
-      setIsDragging(true);
-      setDragMode('start');
-      return;
-    }
-    
-    // If we click on target node, initiate dragging for target node
-    if (row === targetPos.row && col === targetPos.col) {
-      setIsDragging(true);
-      setDragMode('target');
-      return;
-    }
-    
-    // If we're not on a special node, proceed with wall drawing
-    if (!dragMode) {
-      setIsDrawing(true);
-      
-      // Toggle wall status
-      const key = `${row}-${col}`;
-      setWalls(prev => {
-        const newWalls = new Set(prev);
-        if (newWalls.has(key)) {
-          newWalls.delete(key);
-        } else {
-          newWalls.add(key);
-        }
-        return newWalls;
-      });
-    }
-  }, [startPos, targetPos, dragMode]);
+    if (isVisualizing || isGeneratingMaze) return;
 
+    if (row === startPos.row && col === startPos.col) {
+      setDragMode('start');
+    } else if (row === targetPos.row && col === targetPos.col) {
+      setDragMode('target');
+    }
+  }, [isVisualizing, isGeneratingMaze, startPos, targetPos]);
 
   const handleMouseEnter = useCallback((row, col) => {
-    // If we're dragging a node, update its position
-    if (isDragging && dragMode === 'start') {
-      // Don't allow placing the start node on walls or the target
-      if (!walls.has(`${row}-${col}`) && (row !== targetPos.row || col !== targetPos.col)) {
-        setStartPos({ row, col });
-      }
-      return;
-    }
+    if (!dragMode || isVisualizing || isGeneratingMaze) return;
+
+    const cellKey = `${row}-${col}`;
     
-    if (isDragging && dragMode === 'target') {
-      // Don't allow placing the target node on walls or the start
-      if (!walls.has(`${row}-${col}`) && (row !== startPos.row || col !== startPos.col)) {
-        setTargetPos({ row, col });
-      }
-      return;
-    }
-    
-    // Handle wall drawing during mouse drag
-    if (isDrawing && row !== startPos.row && col !== startPos.col && 
-        row !== targetPos.row && col !== targetPos.col) {
-      const key = `${row}-${col}`;
-      setWalls(prev => {
+    // Remove wall if we're dragging over one
+    setWalls(prev => {
+      if (prev.has(cellKey)) {
         const newWalls = new Set(prev);
-        newWalls.add(key);
+        newWalls.delete(cellKey);
         return newWalls;
-      });
+      }
+      return prev;
+    });
+
+    if (dragMode === 'start') {
+      setStartPos({ row, col });
+    } else if (dragMode === 'target') {
+      setTargetPos({ row, col });
     }
-  }, [isDrawing, startPos, targetPos, isDragging, dragMode, walls]);
+  }, [dragMode, isVisualizing, isGeneratingMaze]);
 
   const handleMouseUp = useCallback(() => {
-    setIsDrawing(false);
-    
-    // End any dragging operations
-    if (isDragging) {
-      setIsDragging(false);
-      setDragMode(null);
-    }
-  }, [isDragging]);
+    setDragMode(null);
+  }, []);
 
-  const clearWalls = () => {
+  // Clear walls
+  const clearWalls = useCallback(() => {
+    if (isVisualizing || isGeneratingMaze) return;
     setWalls(new Set());
-  };
-  
-  // Reset all visualization states
-  const resetVisualization = () => {
     setVisitedCells(new Set());
     setPathCells(new Set());
-    setAlgorithmStats({
-      visitedCount: 0,
-      pathLength: 0,
-      pathFound: false
-    });
-  };
-  
-  // Run the selected pathfinding algorithm
-  const runAlgorithm = async () => {
-    // Reset previous visualization
-    resetVisualization();
-    setIsVisualizing(true);
-    
-    // Callback to update visited cells with animation
-    const updateVisited = (row, col) => {
-      const cellKey = `${row}-${col}`;
-      setVisitedCells(prev => {
-        const newVisited = new Set(prev);
-        newVisited.add(cellKey);
-        return newVisited;
-      });
-    };
-    
-    // Callback to update path cells with animation
-    const updatePath = (row, col) => {
-      const cellKey = `${row}-${col}`;
-      setPathCells(prev => {
-        const newPath = new Set(prev);
-        newPath.add(cellKey);
-        return newPath;
-      });
-    };
-    
-    // Execute the BFS algorithm with visualization callbacks
-    const results = await breadthFirstSearch(
-      GRID_SIZE,
-      startPos,
-      targetPos,
-      walls,
-      updateVisited,
-      updatePath
-    );
-    
-    // Update stats with results
-    setAlgorithmStats({
-      visitedCount: results.visitedCount,
-      pathLength: results.pathLength,
-      pathFound: results.pathFound
-    });
-    
-    setIsVisualizing(false);
-  };
+    setMazeGenerationCells(new Set());
+  }, [isVisualizing, isGeneratingMaze]);
 
-  const resetGrid = () => {
+  // Generate maze
+  const generateMaze = useCallback(async () => {
+    if (isVisualizing || isGeneratingMaze) return;
+
+    setIsGeneratingMaze(true);
     setWalls(new Set());
-    setStartPos({ row: 2, col: 2 });
-    setTargetPos({ row: 17, col: 17 });
-    setDragMode(null);
-  };
+    setVisitedCells(new Set());
+    setPathCells(new Set());
+    setMazeGenerationCells(new Set());
+
+    try {
+      const updateWalls = (newWalls) => setWalls(newWalls);
+      const updateMazeGeneration = (newCells) => setMazeGenerationCells(newCells);
+
+      let results;
+      if (mazeGenAlgorithm === 'prims') {
+        results = await generateMazeWithPrims(
+          GRID_SIZE,
+          updateWalls,
+          updateMazeGeneration,
+          150
+        );
+      } else if (mazeGenAlgorithm === 'recursive') {
+        results = await generateMazeWithRecursiveDivision(
+          GRID_SIZE,
+          updateWalls,
+          updateMazeGeneration,
+          120
+        );
+      }
+
+      if (results) {
+        setMazeGenerationStats({
+          generationSteps: results.generationSteps,
+          visitedCells: results.visitedCells
+        });
+      }
+    } catch (error) {
+      console.error('Error generating maze:', error);
+    } finally {
+      setIsGeneratingMaze(false);
+    }
+  }, [isVisualizing, isGeneratingMaze, mazeGenAlgorithm]);
+
+  // Run algorithm
+  const runAlgorithm = useCallback(async () => {
+    if (isVisualizing || isGeneratingMaze) return;
+
+    setIsVisualizing(true);
+    setVisitedCells(new Set());
+    setPathCells(new Set());
+
+    try {
+      const updateVisited = (row, col) => {
+        setVisitedCells(prev => new Set([...prev, `${row}-${col}`]));
+      };
+
+      const updatePath = (row, col) => {
+        setPathCells(prev => new Set([...prev, `${row}-${col}`]));
+      };
+
+      const results = await breadthFirstSearch(
+        GRID_SIZE,
+        startPos,
+        targetPos,
+        walls,
+        updateVisited,
+        updatePath
+      );
+
+      setAlgorithmStats({
+        visitedCount: results.visitedCount,
+        pathLength: results.pathLength,
+        success: results.success,
+        executionTime: results.executionTime
+      });
+
+      if (results.success) {
+        setShowStatistics(true);
+      }
+    } catch (error) {
+      console.error('Error running algorithm:', error);
+    } finally {
+      setIsVisualizing(false);
+    }
+  }, [isVisualizing, isGeneratingMaze, startPos, targetPos, walls]);
 
   return (
-    <div className="min-h-screen bg-[#111827] font-sans">
-      {/* Header Bar */}
-      <header className="bg-[#1F2937] shadow-lg border-b border-gray-800">
-        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center">
-            <CubeIcon className="h-7 w-7 text-emerald-500 mr-2" />
-            <h1 className="text-xl font-bold text-white">Matrix Visualizer</h1>
-          </div>
-          <div className="hidden md:block">
-            <p className="text-gray-300 text-sm">Interactive 2D matrix visualization</p>
-          </div>
+    <div style={{ display: 'flex', height: '100vh', fontFamily: 'Arial, sans-serif', overflow: 'hidden' }}>
+      {/* Sidebar */}
+      <div style={{
+        width: '300px',
+        backgroundColor: '#2d3748',
+        color: 'white',
+        padding: '24px',
+        fontFamily: 'Arial, sans-serif',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '24px'
+      }}>
+        {/* Header */}
+        <div style={{
+          borderBottom: '2px solid #4a5568',
+          paddingBottom: '16px'
+        }}>
+          <h2 style={{ 
+            margin: 0, 
+            fontSize: '20px', 
+            fontWeight: 'bold',
+            color: '#e2e8f0',
+            textAlign: 'center'
+          }}>Control Panel</h2>
         </div>
-      </header>
+        
+        {/* Algorithm Selection Section */}
+        <div style={{
+          backgroundColor: '#374151',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #4a5568'
+        }}>
+          <h3 style={{
+            margin: '0 0 12px 0',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            color: '#f7fafc'
+          }}>Pathfinding Algorithm</h3>
+          <select
+            value={algorithm}
+            onChange={(e) => setAlgorithm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: '6px',
+              border: '2px solid #4a5568',
+              fontSize: '14px',
+              backgroundColor: '#1a202c',
+              color: 'white',
+              outline: 'none',
+              cursor: 'pointer',
+              marginBottom: '12px'
+            }}
+          >
+            <option value="breadth-first">Breadth-First Search</option>
+          </select>
+          
+          <button
+            onClick={runAlgorithm}
+            disabled={isVisualizing || isGeneratingMaze}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              backgroundColor: isVisualizing || isGeneratingMaze ? '#4a5568' : '#38a169',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isVisualizing || isGeneratingMaze ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              transition: 'all 0.2s ease',
+              boxShadow: isVisualizing || isGeneratingMaze ? 'none' : '0 2px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            {isVisualizing ? '⏳ Running...' : '▶️ Start Pathfinding'}
+          </button>
+        </div>
 
-      {/* Main Container */}
-      <div className="container mx-auto px-4 py-6">
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:grid-rows-[1fr] lg:min-h-[calc(100vh-120px)]" style={{ height: 'calc(100vh - 120px)' }}>
-          {/* Left Column - Controls */}
-          <div className="lg:col-span-1">
-            <div className="space-y-6">
-              {/* Algorithm Settings Panel */}
-               <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
-                <div className="bg-[#374151] px-4 py-3 flex items-center">
-                  <CogIcon className="w-5 h-5 text-purple-500 mr-2" />
-                  <h2 className="text-white font-medium">Algorithm Settings</h2>
-                </div>
-                <div className="p-4 space-y-4">
-                  <div>
-                    <label className="block text-gray-300 text-sm mb-1">Maze solving algorithm</label>
-                    <select 
-                      value={algorithm}
-                      onChange={(e) => setAlgorithm(e.target.value)}
-                      className="w-full bg-[#374151] text-white py-2 px-3 rounded-md cursor-pointer border border-gray-600"
-                      disabled={isVisualizing}
-                    >
-                      <option value="breadth-first">Breadth-First</option>
-                      <option value="depth-first">Depth-First</option>
-                      <option value="astar">A* Algorithm</option>
-                      <option value="dijkstra">Dijkstra's Algorithm</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-gray-300 text-sm mb-1">Maze generation</label>
-                    <select 
-                      value={mazeGenAlgorithm}
-                      onChange={(e) => setMazeGenAlgorithm(e.target.value)}
-                      className="w-full bg-[#374151] text-white py-2 px-3 rounded-md cursor-pointer border border-gray-600"
-                      disabled={isVisualizing}
-                    >
-                      <option value="custom">Custom</option>
-                      <option value="random">Random</option>
-                      <option value="recursive">Recursive Division</option>
-                      <option value="prims">Prim's Algorithm</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <button 
-                      className={`w-full py-3 px-4 ${isVisualizing ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-md font-medium transition-all flex items-center justify-center`}
-                      onClick={runAlgorithm}
-                      disabled={isVisualizing}
-                    >
-                      <PlayIcon className="h-5 w-5 mr-2" />
-                      {isVisualizing ? 'Running...' : 'Run Algorithm'}
-                    </button>
-                  </div>
-                {/* Removed duplicate button since we already have a Run Algorithm button */}
-                </div>
-              </section>
+        {/* Maze Generation Section */}
+        <div style={{
+          backgroundColor: '#374151',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #4a5568'
+        }}>
+          <h3 style={{
+            margin: '0 0 12px 0',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            color: '#f7fafc'
+          }}>Maze Generation</h3>
+          <select
+            value={mazeGenAlgorithm}
+            onChange={(e) => setMazeGenAlgorithm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              borderRadius: '6px',
+              border: '2px solid #4a5568',
+              fontSize: '14px',
+              backgroundColor: '#1a202c',
+              color: 'white',
+              outline: 'none',
+              cursor: 'pointer',
+              marginBottom: '12px'
+            }}
+          >
+            <option value="prims">Prim's Algorithm</option>
+            <option value="recursive">Recursive Division</option>
+          </select>
+          
+          <button
+            onClick={generateMaze}
+            disabled={isGeneratingMaze || isVisualizing}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              backgroundColor: isGeneratingMaze || isVisualizing ? '#4a5568' : '#805ad5',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isGeneratingMaze || isVisualizing ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              transition: 'all 0.2s ease',
+              boxShadow: isGeneratingMaze || isVisualizing ? 'none' : '0 2px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            {isGeneratingMaze ? 'Generating...' : 'Generate Maze'}
+          </button>
+        </div>
 
-              {/* Instructional Note for drag-and-drop */}
-              <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
-                <div className="bg-[#374151] px-4 py-3 flex items-center">
-                  <HandRaisedIcon className="w-5 h-5 text-white mr-2" />
-                  <h2 className="text-white font-medium">Interaction Guide</h2>
-                </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <div className="w-3 h-3 bg-emerald-500 rounded-full"></div>
-                    <span className="text-gray-300">Start Node: Drag with cursor</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-amber-500 rounded-full"></div>
-                    <span className="text-gray-300">Target Node: Drag with cursor</span>
-                  </div>
-                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-md mt-2">
-                    <p className="text-blue-400 text-xs">
-                      💡 Click and drag the start and target nodes directly with your cursor. Use click or click-and-drag to draw walls.
-                    </p>
-                  </div>
-                </div>
-              </section>
-              {/* Grid Controls Panel */}
-              <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
-                <div className="bg-[#374151] px-4 py-3 flex items-center">
-                  <StopIcon className="w-5 h-5 text-blue-500 mr-2" />
-                  <h2 className="text-white font-medium">Grid Controls</h2>
-                </div>
-                <div className="p-4 space-y-3">
-                  <button
-                    onClick={clearWalls}
-                    className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-all"
-                  >
-                    <StopIcon className="w-4 h-4 mr-2" />
-                    Clear Walls
-                  </button>
-
-                  <button
-                    onClick={resetGrid}
-                    className="w-full flex items-center justify-center px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-md font-medium text-sm transition-all"
-                  >
-                    <ArrowPathIcon className="w-4 h-4 mr-2" />
-                    Reset Grid
-                  </button>
-                </div>
-              </section>
-            </div>
-          </div>
-
-          {/* Right Column - Matrix and Stats */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Matrix Container */}
-            <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden flex flex-col">
-              <div className="bg-[#374151] px-4 py-3 flex justify-between items-center">
-                <div className="flex items-center">
-                  <CubeIcon className="w-5 h-5 text-white mr-2" />
-                  <h2 className="text-white font-medium">Grid Visualization</h2>
-                </div>
-                <div className="flex items-center space-x-3">
-                  {/* Legend */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 bg-emerald-500 rounded-sm mr-1"></div>
-                      <span className="text-gray-300 text-xs">Start</span>
-                    </div>
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 bg-amber-500 rounded-sm mr-1"></div>
-                      <span className="text-gray-300 text-xs">Target</span>
-                    </div>
-                    <div className="flex items-center">
-                      <div className="w-3 h-3 bg-gray-600 rounded-sm mr-1"></div>
-                      <span className="text-gray-300 text-xs">Wall</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="p-2 flex flex-grow" style={{ height: 'calc(100vh - 200px)', minHeight: '600px' }}>
-                <div className="w-full h-full">
-                  <Matrix 
-                    gridSize={GRID_SIZE}
-                    startPos={startPos}
-                    targetPos={targetPos}
-                    walls={walls}
-                    onCellClick={handleCellClick}
-                    onMouseDown={handleMouseDown}
-                    onMouseEnter={handleMouseEnter}
-                    onMouseUp={handleMouseUp}
-                    dragMode={dragMode}
-                    visitedCells={visitedCells}
-                    pathCells={pathCells}
-                    isVisualizing={isVisualizing}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* Statistics and Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Statistics Panel */}
-              <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
-                <div className="bg-[#374151] px-4 py-3 flex items-center">
-                  <ChartBarIcon className="w-5 h-5 text-sky-500 mr-2" />
-                  <h2 className="text-white font-medium">Statistics</h2>
-                </div>
-                <div className="p-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-xs text-gray-400">Grid Size</p>
-                      <p className="text-base text-white font-mono">{GRID_SIZE} × {GRID_SIZE}</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-xs text-gray-400">Walls</p>
-                      <p className="text-base text-white font-mono">{walls.size}</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-xs text-gray-400">Free Cells</p>
-                      <p className="text-base text-white font-mono">{GRID_SIZE * GRID_SIZE - walls.size - 2}</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-xs text-gray-400">Start Position</p>
-                      <p className="text-base text-emerald-500 font-mono">({startPos.row}, {startPos.col})</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-xs text-gray-400">Target Position</p>
-                      <p className="text-base text-amber-500 font-mono">({targetPos.row}, {targetPos.col})</p>
-                    </div>
-                    
-                    {/* Algorithm Results Section */}
-                    {visitedCells.size > 0 && (
-                      <>
-                        <div className="col-span-2 mt-2 pt-2 border-t border-gray-700">
-                          <h3 className="text-white font-medium mb-2">Search Results</h3>
-                        </div>
-                        <div className="bg-[#2C3648] rounded-md p-3">
-                          <p className="text-xs text-gray-400">Cells Visited</p>
-                          <p className="text-base text-teal-500 font-mono">{algorithmStats.visitedCount}</p>
-                        </div>
-                        <div className="bg-[#2C3648] rounded-md p-3">
-                          <p className="text-xs text-gray-400">Path Length</p>
-                          <p className="text-base text-blue-500 font-mono">{algorithmStats.pathLength || 'N/A'}</p>
-                        </div>
-                        <div className="bg-[#2C3648] rounded-md p-3 col-span-2">
-                          <p className="text-xs text-gray-400">Result</p>
-                          <p className={`text-base font-mono ${algorithmStats.pathFound ? 'text-green-500' : 'text-red-500'}`}>
-                            {algorithmStats.pathFound ? 'Path Found! ✓' : 'No Path Found! ✗'}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              {/* Instructions Panel */}
-              <section className="bg-[#1F2937] rounded-lg shadow-lg overflow-hidden">
-                <div className="bg-[#374151] px-4 py-3 flex items-center">
-                  <InformationCircleIcon className="w-5 h-5 text-sky-500 mr-2" />
-                  <h2 className="text-white font-medium">Instructions</h2>
-                </div>
-                <div className="p-4">
-                  <div className="space-y-3">
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-white text-sm mb-1 font-medium">Drawing Walls</p>
-                      <p className="text-gray-300 text-xs">Click and drag on empty cells to create walls/obstacles</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-white text-sm mb-1 font-medium">Moving Start/Target</p>
-                      <p className="text-gray-300 text-xs">Click and drag the green start node or amber target node to reposition them</p>
-                    </div>
-                    <div className="bg-[#2C3648] rounded-md p-3">
-                      <p className="text-white text-sm mb-1 font-medium">Running Algorithms</p>
-                      <p className="text-gray-300 text-xs">Select an algorithm and click 'Run Algorithm' to visualize pathfinding with animated bubbles</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </div>
+        {/* Control Buttons Section */}
+        <div style={{
+          backgroundColor: '#374151',
+          padding: '16px',
+          borderRadius: '8px',
+          border: '1px solid #4a5568'
+        }}>
+          <h3 style={{
+            margin: '0 0 12px 0',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            color: '#f7fafc'
+          }}>Controls</h3>
+          
+          <button
+            onClick={clearWalls}
+            disabled={isVisualizing || isGeneratingMaze}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              backgroundColor: isVisualizing || isGeneratingMaze ? '#4a5568' : '#e53e3e',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: isVisualizing || isGeneratingMaze ? 'not-allowed' : 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              transition: 'all 0.2s ease',
+              boxShadow: isVisualizing || isGeneratingMaze ? 'none' : '0 2px 4px rgba(0,0,0,0.2)'
+            }}
+          >
+            🗑️ Clear Grid
+          </button>
         </div>
       </div>
+
+      {/* Grid Container */}
+      <div style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        backgroundColor: '#f7fafc',
+        overflow: 'hidden',
+        padding: '4px',
+        paddingBottom: '24px'
+      }}>
+        <div style={{
+          width: '100%',
+        }}>
+          <Matrix
+            gridSize={GRID_SIZE}
+            startPos={startPos}
+            targetPos={targetPos}
+            walls={walls}
+            onCellClick={handleCellClick}
+            onMouseDown={handleMouseDown}
+            onMouseEnter={handleMouseEnter}
+            onMouseUp={handleMouseUp}
+            dragMode={dragMode}
+            visitedCells={visitedCells}
+            pathCells={pathCells}
+            mazeGenerationCells={mazeGenerationCells}
+            isVisualizing={isVisualizing}
+          />
+        </div>
+      </div>
+
+      {/* Statistics Modal */}
+      {showStatistics && (
+        <StatisticsModal
+          isOpen={showStatistics}
+          onClose={() => setShowStatistics(false)}
+          statistics={algorithmStats}
+          mazeStats={mazeGenerationStats}
+        />
+      )}
     </div>
   );
 }
