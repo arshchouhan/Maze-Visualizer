@@ -1,9 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { breadthFirstSearch } from './algorithms/breadthFirstSearch';
+import depthFirstSearch from './algorithms/dfsTopDown';
+import dijkstra from './algorithms/dijkstra';
 import { generateMazeWithPrims } from './algorithms/primsAlgorithm';
 import { generateMazeWithRecursiveDivision } from './algorithms/recursiveDivision';
 import Matrix from './components/Matrix';
-import StatisticsModal from './components/StatisticsModal';
 
 const GRID_SIZE = 45;
 
@@ -17,12 +18,9 @@ function App() {
   const [mazeGenerationCells, setMazeGenerationCells] = useState(new Set());
   const [isVisualizing, setIsVisualizing] = useState(false);
   const [isGeneratingMaze, setIsGeneratingMaze] = useState(false);
-  const [algorithm, setAlgorithm] = useState('breadth-first');
+  const [algorithm, setAlgorithm] = useState('dijkstra');
   const [mazeGenAlgorithm, setMazeGenAlgorithm] = useState('prims');
   const [dragMode, setDragMode] = useState(null);
-  const [showStatistics, setShowStatistics] = useState(false);
-  const [algorithmStats, setAlgorithmStats] = useState(null);
-  const [mazeGenerationStats, setMazeGenerationStats] = useState(null);
 
   // Cell click handler
   const handleCellClick = useCallback((row, col) => {
@@ -125,12 +123,7 @@ function App() {
         );
       }
 
-      if (results) {
-        setMazeGenerationStats({
-          generationSteps: results.generationSteps,
-          visitedCells: results.visitedCells
-        });
-      }
+
     } catch (error) {
       console.error('Error generating maze:', error);
     } finally {
@@ -142,6 +135,8 @@ function App() {
   const runAlgorithm = useCallback(async () => {
     if (isVisualizing || isGeneratingMaze) return;
 
+    console.log('Starting algorithm:', algorithm); // Debug log
+    
     setIsVisualizing(true);
     setVisitedCells(new Set());
     setPathCells(new Set());
@@ -155,31 +150,48 @@ function App() {
         setPathCells(prev => new Set([...prev, `${row}-${col}`]));
       };
 
-      const results = await breadthFirstSearch(
-        GRID_SIZE,
-        startPos,
-        targetPos,
-        walls,
-        updateVisited,
-        updatePath
-      );
-
-      setAlgorithmStats({
-        visitedCount: results.visitedCount,
-        pathLength: results.pathLength,
-        success: results.success,
-        executionTime: results.executionTime
-      });
-
-      if (results.success) {
-        setShowStatistics(true);
+      let results;
+      if (algorithm === 'breadth-first') {
+        console.log('Executing BFS...'); // Debug log
+        results = await breadthFirstSearch(
+          GRID_SIZE,
+          startPos,
+          targetPos,
+          walls,
+          updateVisited,
+          updatePath
+        );
+      } else if (algorithm === 'depth-first') {
+        console.log('Executing DFS...'); // Debug log
+        results = await depthFirstSearch(
+          GRID_SIZE,
+          startPos,
+          targetPos,
+          walls,
+          updateVisited,
+          updatePath
+        );
+      } else if (algorithm === 'dijkstra') {
+        console.log('Executing Dijkstra\'s Algorithm...');
+        results = await dijkstra(
+          GRID_SIZE,
+          startPos,
+          targetPos,
+          walls,
+          updateVisited,
+          updatePath
+        );
+      } else {
+        console.error('Unknown algorithm selected:', algorithm);
       }
+
+
     } catch (error) {
       console.error('Error running algorithm:', error);
     } finally {
       setIsVisualizing(false);
     }
-  }, [isVisualizing, isGeneratingMaze, startPos, targetPos, walls]);
+  }, [isVisualizing, isGeneratingMaze, startPos, targetPos, walls, algorithm]);
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'Arial, sans-serif', overflow: 'hidden' }}>
@@ -238,6 +250,8 @@ function App() {
             }}
           >
             <option value="breadth-first">Breadth-First Search</option>
+            <option value="depth-first">Depth-First Search (Top-Down)</option>
+            <option value="dijkstra">Dijkstra's Algorithm</option>
           </select>
           
           <button
@@ -383,15 +397,7 @@ function App() {
         </div>
       </div>
 
-      {/* Statistics Modal */}
-      {showStatistics && (
-        <StatisticsModal
-          isOpen={showStatistics}
-          onClose={() => setShowStatistics(false)}
-          statistics={algorithmStats}
-          mazeStats={mazeGenerationStats}
-        />
-      )}
+
     </div>
   );
 }
